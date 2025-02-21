@@ -70,6 +70,24 @@ module Arel
           _(sql).must_be_like %{ "users"."name" IS NOT NULL }
         end
       end
+
+      describe "Nodes::ValuesTable" do
+        before do
+          @products = Table.new(:products)
+          @rows = [[1, 'one'],[2, 'two'],[3, 'three']]
+          @values_table = Arel::Nodes::ValuesTable.new(:data, @rows)
+          @join_table = @products.join(@values_table).on(@products[:id].eq(@values_table[0]))
+          @table = @join_table.ast.cores.first.source
+        end
+
+        it "generates a correct update statement" do
+          um = Arel::UpdateManager.new.table(@table).set([[@products[:name], @values_table[1]]])
+
+          _(compile(um.ast)).must_be_like %{
+            UPDATE "products" SET "name" = "data"."column2" FROM (VALUES (1, 'one'), (2, 'two'), (3, 'three')) AS "data" WHERE "products"."id" = "data"."column1"
+          }
+        end
+      end
     end
   end
 end

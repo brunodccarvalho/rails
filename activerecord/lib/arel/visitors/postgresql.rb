@@ -44,7 +44,8 @@ module Arel # :nodoc: all
               end
             end
 
-            from_where = [first_join.right.expr] + from_items.map { |i| i.right.expr }
+            from_where = first_join.right ? [first_join.right.expr] : []
+            from_where += from_items.map { |i| i.right.expr }
             collect_nodes_for from_where + o.wheres, collector, " WHERE ", " AND "
           else
             collector = visit o.relation, collector
@@ -143,6 +144,17 @@ module Arel # :nodoc: all
           collector = visit o.left, collector
           collector << " IS DISTINCT FROM "
           visit o.right, collector
+        end
+
+        def visit_Arel_Nodes_ValuesTable(o, collector)
+          collector << "("
+          visit_values_rows_list o.values, collector
+          collector << ") AS #{quote_table_name(o.name)} ("
+          o.column_aliases_or_default_names.each_with_index do |name, i|
+            collector << ", " unless i == 0
+            collector << quote_column_name(name)
+          end
+          collector << ")"
         end
 
         BIND_BLOCK = proc { |i| "$#{i}" }

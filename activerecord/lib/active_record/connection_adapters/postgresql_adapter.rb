@@ -662,6 +662,12 @@ module ActiveRecord
         sql
       end
 
+      # TODO: UUA: do this some other way ?
+      PRIMITIVE_TYPES = [:string, :text, :integer, :bigint, :float, :decimal, :boolean].freeze
+      def requires_cast_for_untyped_comparison?(column)
+        PRIMITIVE_TYPES.exclude?(column.type.to_sym)
+      end
+
       def check_version # :nodoc:
         if database_version < 9_03_00 # < 9.3
           raise "Your version of PostgreSQL (#{database_version}) is too old. Active Record supports PostgreSQL >= 9.3."

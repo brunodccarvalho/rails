@@ -97,12 +97,12 @@ module Arel # :nodoc: all
           collector << "FALSE"
         end
 
-        def visit_Arel_Nodes_ValuesList(o, collector)
+        def visit_values_rows_list(o, collector, row_prefix = '')
           collector << "VALUES "
 
           o.rows.each_with_index do |row, i|
             collector << ", " unless i == 0
-            collector << "("
+            collector << row_prefix << "("
             row.each_with_index do |value, k|
               collector << ", " unless k == 0
               case value
@@ -115,6 +115,14 @@ module Arel # :nodoc: all
             collector << ")"
           end
           collector
+        end
+
+        def visit_Arel_Nodes_ValuesList(o, collector)
+          visit_values_rows_list o, collector
+        end
+
+        def visit_Arel_Nodes_ValuesTable(o, collector)
+          raise NotImplementedError, "VALUES ... AS not implemented for this db"
         end
 
         def visit_Arel_Nodes_SelectStatement(o, collector)

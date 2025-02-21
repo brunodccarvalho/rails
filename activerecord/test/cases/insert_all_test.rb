@@ -518,6 +518,10 @@ class InsertAllTest < ActiveRecord::TestCase
     Book.insert_all [{ id: 101, name: "Out of the Silent Planet", published_on: Date.new(1938, 4, 1), updated_at: 5.years.ago }]
     Book.upsert_all [{ id: 101, name: "Out of the Silent Planet", published_on: Date.new(1938, 4, 8), updated_at: updated_at }]
 
+    puts updated_at.inspect
+    puts Book.find(101).updated_at.inspect
+    puts (updated_at - Book.find(101).updated_at).inspect
+    puts (Book.find(101).updated_at - updated_at).class
     assert_in_delta updated_at, Book.find(101).updated_at, 1
   end
 

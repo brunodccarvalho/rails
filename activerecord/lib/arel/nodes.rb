@@ -52,6 +52,7 @@ require "arel/nodes/count"
 require "arel/nodes/extract"
 require "arel/nodes/values_list"
 require "arel/nodes/named_function"
+require "arel/nodes/values_table"
 
 # windows
 require "arel/nodes/window"

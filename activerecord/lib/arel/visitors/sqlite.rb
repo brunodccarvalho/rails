@@ -101,6 +101,14 @@ module Arel # :nodoc: all
           visit o.right, collector
         end
 
+        def visit_Arel_Nodes_ValuesTable(o, collector)
+          # SQLite does not support column aliases in this construct, they are fixed: column1, ...
+          unsupported(o, collector) if o.column_aliases
+          collector << "("
+          visit_values_rows_list o.values, collector
+          collector << ") AS #{quote_table_name(o.name)}"
+        end
+
         # Queries used in UNION should not be wrapped by parentheses,
         # because it is an invalid syntax in SQLite.
         def infix_value_with_paren(o, collector, value, suppress_parens = false)

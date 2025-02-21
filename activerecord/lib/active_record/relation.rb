@@ -590,17 +590,7 @@ module ActiveRecord
 
       return 0 if @none
 
-      invalid_methods = INVALID_METHODS_FOR_UPDATE_AND_DELETE_ALL.select do |method|
-        value = @values[method]
-        method == :distinct ? value : value&.any?
-      end
-      if invalid_methods.any?
-        ActiveRecord.deprecator.warn <<~MESSAGE
-          `#{invalid_methods.join(', ')}` is not supported by `update_all` and was never included in the generated query.
-
-          Calling `#{invalid_methods.join(', ')}` with `update_all` will raise an error in Rails 8.2.
-        MESSAGE
-      end
+      warn_unused_update_all_methods_for_deprecation
 
       if updates.is_a?(Hash)
         if model.locking_enabled? &&
@@ -645,6 +635,93 @@ module ActiveRecord
         model.update!(id, attributes)
       end
     end
+
+    # Updates multiple groups of records in the current relation in a single SQL
+    # UPDATE statement. It does not instantiate the involved models and it does
+    # not trigger Active Record callbacks or validations. However, values passed
+    # will still go through Active Record's normal type casting and
+    # serialization. Returns the number of rows affected.
+    #
+    # The +updates+ parameter is an Array of pairs of Hashes, one pair for each
+    # group of records. The first Hash in the pair specifies a set of equality
+    # conditions on the table's columns that identifies some of the records in
+    # the association. The second Hash specifies the unique set of values to
+    # assign for all the matched records in the group. All groups must specify
+    # the same set of columns in both Hashes.
+    #
+    # For the common case where the set of equality conditions is simply the
+    # primary key of the table, the +updates+ parameter may be given as a Hash
+    # with Hash values and the primary key value as the keys.
+    #
+    # ==== Options
+    #
+    # [:record_timestamps]
+    #   By default, automatic setting of timestamp columns is controlled by
+    #   the model's <tt>record_timestamps</tt> config, matching typical
+    #   behavior.
+    #
+    #   To override this and force automatic setting of timestamp columns one
+    #   way or the other, pass <tt>:record_timestamps</tt>:
+    #
+    #     record_timestamps: true  # Always set timestamps automatically
+    #     record_timestamps: false # Never set timestamps automatically
+    #
+    # ==== Examples
+    #
+    #   # Change the title and price of various books by their primary key id.
+    #   Book.uniform_update_all({
+    #     1 => { title: "Reword", price: 10.0 },
+    #     2 => { title: "Ruby on Rails", price: 15.0 }
+    #   })
+    #
+    #   # Migration to combine two columns into one for all entries in a table.
+    #   Book.uniform_update_all([
+    #     [{ written: false, published: false }, { status: :proposed }],
+    #     [{ written: true,  published: false }, { status: :written }],
+    #     [{ written: true,  published: true },  { status: :published }]
+    #   ], record_timestamps: false)
+    #
+    def uniform_update_all(updates, record_timestamps: nil)
+      return 0 if @none || updates.empty?
+
+      warn_unused_update_all_methods_for_deprecation
+
+      model.with_connection do |c|
+        values_table, join_conditions, values = UpdateAll.new(self, c, updates, record_timestamps:).to_arel
+
+        arel = eager_loading? ? apply_join_dependency.arel : build_arel(c)
+        arel.source.left = table
+        arel = arel.join(values_table).on(*join_conditions)
+        puts "\n" + arel.to_sql(model).truncate(3000)
+
+        group_values_arel_columns = arel_columns(group_values.uniq)
+        having_clause_ast = having_clause.ast unless having_clause.empty?
+        key = if model.composite_primary_key?
+          primary_key.map { |pk| table[pk] }
+        else
+          table[primary_key]
+        end
+
+        stmt = arel.compile_update(values, key, having_clause_ast, group_values_arel_columns)
+        puts c.send(:to_sql_and_binds, stmt, []).first.truncate(3000)
+        c.update(stmt, "#{model} Update All").tap { reset }
+      end
+    end
+
+    def warn_unused_update_all_methods_for_deprecation
+      invalid_methods = INVALID_METHODS_FOR_UPDATE_AND_DELETE_ALL.select do |method|
+        value = @values[method]
+        method == :distinct ? value : value&.any?
+      end
+      if invalid_methods.any?
+        ActiveRecord.deprecator.warn <<~MESSAGE
+          `#{invalid_methods.join(', ')}` is not supported by `update_all` and was never included in the generated query.
+
+          Calling `#{invalid_methods.join(', ')}` with `update_all` will raise an error in Rails 8.2.
+        MESSAGE
+      end
+    end
+    private :warn_unused_update_all_methods_for_deprecation
 
 
     # Inserts a single record into the database in a single SQL INSERT

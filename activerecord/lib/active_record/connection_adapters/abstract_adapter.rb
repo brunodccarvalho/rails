@@ -848,6 +848,10 @@ module ActiveRecord
         "INSERT #{insert.into} #{insert.values_list}"
       end
 
+      def requires_cast_for_untyped_comparison?(column)
+        false
+      end
+
       def get_database_version # :nodoc:
       end
 

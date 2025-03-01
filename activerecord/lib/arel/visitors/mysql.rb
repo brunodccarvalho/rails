@@ -75,6 +75,17 @@ module Arel # :nodoc: all
           visit o.relation, collector
         end
 
+        def visit_Arel_ValuesTable(o, collector)
+          collector << "(VALUES "
+          collector = values_rows_list o.rows, collector, (@connection.mariadb? ? "" : "ROW")
+          collector << ") #{quote_table_name(o.name)} ("
+          o.column_aliases_or_default_names.each_with_index do |name, i|
+            collector << ", " unless i == 0
+            collector << quote_column_name(name)
+          end
+          collector << ")"
+        end
+
         # In the simple case, MySQL allows us to place JOINs directly into the UPDATE
         # query. However, this does not allow for LIMIT, OFFSET and ORDER. To support
         # these, we must use a subquery.

@@ -145,6 +145,29 @@ module Arel # :nodoc: all
           visit o.right, collector
         end
 
+        def visit_Arel_ValuesTable(o, collector)
+          # In postgresql the table must be typed so its columns can be used
+          # in assignments and comparisons.
+          # It suffices to explicitly cast the first row, even if it has NULLs.
+          # see https://www.postgresql.org/docs/current/typeconv-union-case.html
+          collector << "(VALUES "
+          if o.column_types
+            collector = cast_values_row o.rows[0], collector, o.column_types
+            unless o.rows.one?
+              collector << ", "
+              collector = values_rows_list o.rows[1..], collector
+            end
+          else
+            collector = values_rows_list o.rows, collector
+          end
+          collector << ") #{quote_table_name(o.name)} ("
+          o.column_aliases_or_default_names.each_with_index do |name, i|
+            collector << ", " unless i == 0
+            collector << quote_column_name(name)
+          end
+          collector << ")"
+        end
+
         BIND_BLOCK = proc { |i| "$#{i}" }
         private_constant :BIND_BLOCK
 
@@ -160,6 +183,22 @@ module Arel # :nodoc: all
           else
             visit o.expr, collector
           end
+        end
+
+        def cast_values_row(row, collector, column_types)
+          collector << "("
+          row.each_with_index do |value, i|
+            collector << ", " unless i == 0
+            collector << "CAST("
+            case value
+            when Nodes::SqlLiteral, Nodes::BindParam, ActiveModel::Attribute
+              collector = visit(value, collector)
+            else
+              collector << quote(value).to_s
+            end
+            collector << " AS #{column_types[i].sql_type})"
+          end
+          collector << ")"
         end
     end
   end

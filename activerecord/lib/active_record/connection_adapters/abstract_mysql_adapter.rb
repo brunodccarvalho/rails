@@ -192,6 +192,14 @@ module ActiveRecord
         end
       end
 
+      def supports_values_tables?
+        mariadb? ? database_version >= "10.3.3" : database_version >= "8.0.19"
+      end
+
+      def values_table_row_prefix
+        mariadb? ? "" : "ROW"
+      end
+
       def get_advisory_lock(lock_name, timeout = 0) # :nodoc:
         query_value("SELECT GET_LOCK(#{quote(lock_name.to_s)}, #{timeout})", nil, materialize_transactions: true) == 1
       end

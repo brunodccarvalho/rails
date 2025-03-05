@@ -16,6 +16,10 @@ module Arel # :nodoc: all
       @ctx = @ast.cores.last
     end
 
+    def alias(name)
+      Arel::Nodes::TableAlias.new(self, name)
+    end
+
     def limit
       @ast.limit && @ast.limit.expr
     end

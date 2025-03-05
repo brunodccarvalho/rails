@@ -261,6 +261,10 @@ module ActiveRecord
         database_version >= "3.31.0"
       end
 
+      def values_table_requires_aliasing?
+        false
+      end
+
       def connected?
         !(@raw_connection.nil? || @raw_connection.closed?)
       end

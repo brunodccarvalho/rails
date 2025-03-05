@@ -323,6 +323,7 @@ ActiveRecord::Schema.define do
   create_table :cpk_cars, force: true, primary_key: [:make, :model] do |t|
     t.string :make, null: false
     t.string :model, null: false
+    t.integer :year, default: 0
   end
 
   create_table :cpk_car_reviews, force: true do |t|

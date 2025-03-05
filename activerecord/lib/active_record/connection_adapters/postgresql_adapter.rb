@@ -493,6 +493,38 @@ module ActiveRecord
         database_version >= 13_00_00 # >= 13.0
       end
 
+      def values_table_requires_aliasing?
+        false
+      end
+
+      SAFE_TYPES_FOR_VALUES_TABLE = [:integer, :string, :text, :boolean].freeze
+
+      def typecast_values_table(values_table, columns)
+        types = columns.map.with_index do |column, index|
+          case column
+          when ConnectionAdapters::PostgreSQL::Column
+            if SAFE_TYPES_FOR_VALUES_TABLE.exclude?(column.type) ||
+                values_table.rows.all? { |row| row[index].nil? }
+              column.sql_type
+            end
+          when String
+            Arel.sql(column)
+          end
+        end
+
+        return values_table if types.all?(&:nil?)
+
+        aliases = values_table.columns || []
+        values_table = Arel::Nodes::ValuesTable.new(values_table.name, values_table.rows)
+
+        values_table.from(nil).project((0...values_table.width).map do |index|
+          proj = Arel::Nodes::UnqualifiedColumn.new(values_table[index])
+          proj = proj.cast(proj, Arel.sql(types[index])) if types[index]
+          proj = proj.as(Arel::Nodes::UnqualifiedColumn.new(aliases[index])) if aliases[index]
+          proj
+        end)
+      end
+
       def get_advisory_lock(lock_id) # :nodoc:
         unless lock_id.is_a?(Integer) && lock_id.bit_length <= 63
           raise(ArgumentError, "PostgreSQL requires advisory lock ids to be a signed 64 bit integer")

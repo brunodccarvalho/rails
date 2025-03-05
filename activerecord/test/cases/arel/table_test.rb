@@ -202,5 +202,20 @@ module Arel
         assert_equal 2, array.uniq.size
       end
     end
+
+    describe "ValuesTable" do
+      it "responds to :[] with default or given column aliases" do
+        rows = [[1, "one"], [2, "two"]]
+        table1 = Arel::Nodes::ValuesTable.new(:data, rows)
+        table2 = Arel::Nodes::ValuesTable.new(:data, rows, columns: %i[id name])
+
+        assert_equal "column2", table1[1].name
+        assert_equal "column2", table1[-1].name
+        assert_equal "name", table1[:name].name
+        assert_equal "name", table2[1].name
+        assert_equal "name", table2[-1].name
+        assert_equal "name", table2[:name].name
+      end
+    end
   end
 end

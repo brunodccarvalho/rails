@@ -94,21 +94,28 @@ module Arel # :nodoc: all
         end
 
         def visit_Arel_Nodes_ValuesList(o, collector)
-          collector << "VALUES "
+          values_rows_list o.rows, collector
+        end
 
-          o.rows.each_with_index do |row, i|
+        def visit_Arel_Nodes_ValuesTable(o, collector)
+          row_prefix = @connection.values_table_row_prefix
+
+          unless @connection.values_table_requires_aliasing? || o.columns
+            return values_rows_list(o.rows, collector, row_prefix)
+          end
+
+          column_aliases = o.column_aliases_or_default_names
+
+          # Extract the first row into a handrolled SELECT and put the aliases there.
+          collector << "SELECT "
+          o.rows[0].each_with_index do |value, i|
             collector << ", " unless i == 0
-            collector << "("
-            row.each_with_index do |value, k|
-              collector << ", " unless k == 0
-              case value
-              when Nodes::SqlLiteral, Nodes::BindParam, ActiveModel::Attribute
-                collector = visit(value, collector)
-              else
-                collector << quote(value).to_s
-              end
-            end
-            collector << ")"
+            collector = visit_values_row_value(value, collector)
+            collector << " " << quote_column_name(column_aliases[i])
+          end
+          unless o.rows.size == 1
+            collector << " UNION ALL "
+            collector = values_rows_list(o.rows[1...], collector, row_prefix)
           end
           collector
         end
@@ -1018,6 +1025,29 @@ module Arel # :nodoc: all
             visit child.to_cte, collector
           end
 
+          collector
+        end
+
+        def visit_values_row_value(value, collector)
+          case value
+          when Nodes::SqlLiteral, Nodes::BindParam, ActiveModel::Attribute
+            visit(value, collector)
+          else
+            collector << quote(value).to_s
+          end
+        end
+
+        def values_rows_list(rows, collector, row_prefix = "")
+          collector << "VALUES "
+          rows.each_with_index do |row, i|
+            collector << ", " unless i == 0
+            collector << row_prefix << "("
+            row.each_with_index do |value, i|
+              collector << ", " unless i == 0
+              collector = visit_values_row_value(value, collector)
+            end
+            collector << ")"
+          end
           collector
         end
     end

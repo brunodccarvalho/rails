@@ -129,7 +129,7 @@ module Arel
         )
 
         um.table join_source
-        _(um.to_sql).must_be_like %{ UPDATE "users" INNER JOIN "posts" }
+        _(um.to_sql).must_be_like %{ UPDATE "users" CROSS JOIN "posts" }
       end
     end
 

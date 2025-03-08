@@ -551,13 +551,14 @@ module Arel # :nodoc: all
         end
 
         def visit_Arel_Nodes_InnerJoin(o, collector)
-          collector << "INNER JOIN "
-          collector = visit o.left, collector
           if o.right
+            collector << "INNER JOIN "
+            collector = visit o.left, collector
             collector << " "
             visit(o.right, collector)
           else
-            collector
+            collector << "CROSS JOIN "
+            visit o.left, collector
           end
         end
 

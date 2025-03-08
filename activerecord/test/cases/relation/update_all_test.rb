@@ -93,11 +93,7 @@ class UpdateAllTest < ActiveRecord::TestCase
   end
 
   def test_dynamic_update_all_with_one_joined_table
-    update_fragment = if current_adapter?(:TrilogyAdapter, :Mysql2Adapter)
-      "toys.name = pets.name"
-    else # PostgreSQLAdapter, SQLite3Adapter
-      "name = pets.name"
-    end
+    update_fragment = sql_fragment_for_update("toys", "name", "pets.name")
 
     toys = Toy.joins(:pet)
     assert_equal 3, toys.count
@@ -119,11 +115,7 @@ class UpdateAllTest < ActiveRecord::TestCase
   end
 
   def test_dynamic_update_all_with_one_join_on_the_target_and_one_indirect_join
-    update_fragment = if current_adapter?(:TrilogyAdapter, :Mysql2Adapter)
-      "toys.name = owners.name"
-    else # PostgreSQLAdapter, SQLite3Adapter
-      "name = owners.name"
-    end
+    update_fragment = sql_fragment_for_update("toys", "name", "owners.name")
 
     toys = Toy.joins(pet: [:owner])
     assert_equal 3, toys.count
@@ -135,11 +127,7 @@ class UpdateAllTest < ActiveRecord::TestCase
   end
 
   def test_dynamic_update_all_with_two_joins_on_the_target
-    update_fragment = if current_adapter?(:TrilogyAdapter, :Mysql2Adapter)
-      "developers.name = mentors.name"
-    else # PostgreSQLAdapter, SQLite3Adapter
-      "name = mentors.name"
-    end
+    update_fragment = sql_fragment_for_update("developers", "name", "mentors.name")
 
     jamis, david, poor_jamis = developers(:jamis, :david, :poor_jamis)
     jamis.update_columns(
@@ -165,17 +153,62 @@ class UpdateAllTest < ActiveRecord::TestCase
   end
 
   def test_update_all_with_left_joins
-    pets = Pet.left_joins(:toys).where(toys: { name: "Bone" })
+    update_fragment = sql_fragment_for_update("pets", "name", "COALESCE(toys.name, 'Toyless')")
+
+    pets = Pet.left_joins(:toys).where(toys: { name: ["Bone", nil] })
 
     assert_equal true, pets.exists?
-    assert_equal pets.count, pets.update_all(name: "Bob")
+    assert_equal pets.count, pets.update_all(update_fragment)
+    assert_equal "Toyless", Pet.where.missing(:toys).first.name
   end
 
   def test_update_all_with_left_outer_joins
-    pets = Pet.left_outer_joins(:toys)
+    update_fragment = sql_fragment_for_update("pets", "name", "COALESCE(toys.name, 'Toyless')")
+
+    pets = Pet.left_outer_joins(:toys).where(toys: { name: ["Bone", nil] })
 
     assert_equal true, pets.exists?
-    assert_equal pets.count, pets.update_all(name: "Boby")
+    assert_equal pets.count, pets.update_all(update_fragment)
+    assert_equal "Toyless", Pet.where.missing(:toys).first.name
+  end
+
+  def test_update_all_with_string_joins
+    update_fragment = sql_fragment_for_update("pets", "name", "COALESCE(toys.name, 'Toyless')")
+
+    pets = Pet.joins("FULL OUTER JOIN toys ON toys.pet_id = pets.pet_id").where(toys: { name: ["Bone", nil] })
+
+    assert_equal true, pets.exists?
+    assert_equal pets.count, pets.update_all(update_fragment)
+    assert_equal "Toyless", Pet.where.missing(:toys).first.name
+  end
+
+  def test_update_all_with_self_left_joins
+    update_fragment = sql_fragment_for_update("comments", "body", "COALESCE(parent.body, posts.title)")
+
+    lvl2 = Comment.left_joins(parent: :parent).joins(:post).where(parent: { parent: nil }).where.not(parent: nil)
+
+    assert_equal true, lvl2.exists?
+    assert_equal lvl2.count, lvl2.update_all(update_fragment)
+  end
+
+  def test_update_all_with_left_joins_composite_primary_key
+    update_fragment = sql_fragment_for_update("cpk_orders", "status", "COALESCE(order_agreements.signature, 'orphan')")
+
+    orders = Cpk::Order.left_joins(:order_agreements).where(order_agreements: { order_id: nil })
+
+    assert_equal true, orders.exists?
+    assert_equal orders.count, orders.update_all(update_fragment)
+    assert_equal orders.count, Cpk::Order.where(status: 'orphan').count
+  end
+
+  if current_adapter?(:SQLite3Adapter, :PostgreSQLAdapter)
+    def test_update_all_with_left_joins_unqualified_set_reference_is_ambiguous
+      update_fragment = sql_fragment_for_update("cpk_orders", "status", "CONCAT(\"status\", 'orphan')")
+
+      orders = Cpk::Order.left_joins(:order_agreements).where(order_agreements: { order_id: nil })
+
+      assert_raises(ActiveRecord::StatementInvalid, match: /ambiguous/) { orders.update_all(update_fragment) }
+    end
   end
 
   def test_update_all_with_includes
@@ -461,5 +494,15 @@ class UpdateAllTest < ActiveRecord::TestCase
     assert_equal 1, limited_posts.update_all([ "body = ?", "bulk update!" ])
     assert_equal "bulk update!", posts(:thinking).body
     assert_not_equal "bulk update!", posts(:welcome).body
+  end
+
+  private
+
+  def sql_fragment_for_update(table, column, sql)
+    if current_adapter?(:TrilogyAdapter, :Mysql2Adapter)
+      "#{table}.#{column} = #{sql}"
+    else # PostgreSQLAdapter, SQLite3Adapter
+      "#{column} = #{sql}"
+    end
   end
 end

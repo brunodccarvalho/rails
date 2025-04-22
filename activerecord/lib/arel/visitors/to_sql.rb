@@ -615,6 +615,12 @@ module Arel # :nodoc: all
           inject_join o.children, collector, " OR "
         end
 
+        def visit_Arel_Nodes_Tuple(o, collector)
+          collector << "("
+          inject_join o.children, collector, ", "
+          collector << ")"
+        end
+
         def visit_Arel_Nodes_Assignment(o, collector)
           case o.right
           when Arel::Nodes::Node, Arel::Attributes::Attribute, ActiveModel::Attribute

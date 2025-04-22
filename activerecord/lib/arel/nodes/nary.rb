@@ -35,5 +35,15 @@ module Arel # :nodoc: all
 
     And = Class.new(Nary)
     Or = Class.new(Nary)
+
+    class Tuple < Nary
+      def self.as_needed(array, &)
+        if array.size == 1
+          block_given? ? yield(array[0]) : array[0]
+        else
+          new(block_given? ? array.map(&) : array)
+        end
+      end
+    end
   end
 end

@@ -87,7 +87,7 @@ module ActiveRecord
         attributes.flat_map do |key, value|
           if key.is_a?(Array) && key.size == 1
             key = key.first
-            value = value.flatten
+            value = value.flatten(1)
           end
 
           if key.is_a?(Array)
@@ -150,14 +150,59 @@ module ActiveRecord
     private
       attr_reader :table
 
+      def contradiction
+        @contradiction ||= Arel::Nodes::In.new(0, [])
+      end
+
       def grouping_queries(queries)
-        if queries.one?
+        if queries.empty?
+          contradiction
+        elsif queries.one?
           queries.first
+        elsif homogeneous_equality_queries?(queries)
+          homogeneous_grouping_queries(queries)
         else
-          queries.map! { |query| query.reduce(&:and) }
+          queries.map! { |query| Arel::Nodes::And.new(query) }
           queries = Arel::Nodes::Or.new(queries)
           Arel::Nodes::Grouping.new(queries)
         end
+      end
+
+      def homogeneous_grouping_queries(queries)
+        conditions, indices = [], []
+
+        (0...queries[0].size).each do |j|
+          if queries.all? { |query| query[j] == queries[0][j] }
+            conditions << queries[0][j]
+          else
+            indices << j
+          end
+        end
+
+        unless indices.empty?
+          lhs = Arel::Nodes::Tuple.as_needed(indices) { |j| queries[0][j].left }
+          in_tuples, disjunction = [], []
+          queries.each do |query|
+            rhs = Arel::Nodes::Tuple.as_needed(indices) { |j| query[j].right }
+            if indices.none? { |j| query[j].right.nil? }
+              in_tuples << rhs
+            else
+              disjunction << lhs.is_not_distinct_from(rhs)
+            end
+          end
+          disjunction << Arel::Nodes::In.new(lhs, in_tuples) if in_tuples.any?
+          disjunction = Arel::Nodes::Grouping.new(Arel::Nodes::Or.new(disjunction)) if disjunction.size > 1
+          conditions << disjunction
+        end
+
+        Arel::Nodes::And.new(conditions)
+      end
+
+      def homogeneous_equality_queries?(queries)
+        return false unless queries.all? { |tuple| tuple.all?(Arel::Nodes::Equality) }
+
+        lhs = queries[0].map(&:left)
+        lhs.all?(Arel::Attributes::Attribute) && queries.all? { |tuple| tuple.map(&:left) == lhs }
       end
 
       def convert_dot_notation_to_hash(attributes)

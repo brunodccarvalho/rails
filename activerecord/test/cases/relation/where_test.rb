@@ -107,6 +107,43 @@ module ActiveRecord
       assert_equal [first_topic, third_topic].sort, Topic.where(key => conditions).sort
     end
 
+    def test_where_with_tuple_syntax_and_empty_array
+      assert_no_queries do
+        assert_equal [], Topic.where([:id] => []).to_a
+        assert_equal [], Topic.where([:id, :title] => []).to_a
+      end
+    end
+
+    def test_where_with_tuple_syntax_and_nil_elements
+      Chef.insert_all! [
+        { id: 11, employable_id: 1,   employable_type: "Post",    department_id: 2 },
+        { id: 12, employable_id: 2,   employable_type: "Post",    department_id: 1 },
+        { id: 13, employable_id: 2,   employable_type: "Comment", department_id: 1 },
+        { id: 14, employable_id: nil, employable_type: "Comment", department_id: 2 },
+        { id: 15, employable_id: 1,   employable_type: "Comment", department_id: nil },
+      ]
+
+      assert_equal [12, 14, 15], Chef.where([:employable_id, :employable_type, :department_id] => [
+        [2, "Post", 1],
+        [nil, "Comment", 2],
+        [1, "Comment", nil],
+      ]).pluck(:id).sort
+      assert_equal [11, 12, 13], Chef.where(employable: [Post.find(1), Post.find(2), Comment.find(2)]).pluck(:id).sort
+
+      sql = capture_sql do
+        assert_equal [12, 13], Chef.where([:employable_id, :employable_type, :department_id] => [
+          [2, "Post", 1],
+          [2, "Comment", 1],
+        ]).pluck(:id).sort
+      end
+      column = Chef.connection. quote_column_name("employable_type")
+      assert_match(/#{column} IN \(/, sql.first)  # Added assertion to check for the column name
+    end
+
+    def test_where_with_tuple_syntax_and_range
+      assert_equal [7, 8, 9, 11], Post.where([:id, :author_id] => [[7..11, 2], [6..8, 3]]).pluck(:id).sort
+    end
+
     def test_where_with_tuple_syntax_on_composite_models
       book_one = Cpk::Book.create!(id: [1, 2])
       book_two = Cpk::Book.create!(id: [3, 4])
@@ -140,12 +177,21 @@ module ActiveRecord
     end
 
     def test_with_tuple_syntax_and_large_values_list
+      assert_nothing_raised do
+        ids = [[1, 2]] * 2000
+        Cpk::Book.where([:author_id, :id] => ids).to_a
+      end
+      assert_nothing_raised do
+        ids = (1..2000).zip(1..2000)
+        Cpk::Book.where([:author_id, :id] => ids).to_a
+      end
+
       # sqlite3 raises "Expression tree is too large (maximum depth 1000)"
       skip if current_adapter?(:SQLite3Adapter)
 
       assert_nothing_raised do
-        ids = [[1, 2]] * 1500
-        Cpk::Book.where([:author_id, :id] => ids).to_sql
+        ids = (1..1000).flat_map { |i| [[i, i], [nil, i], [i, nil]] }
+        Cpk::Book.where([:author_id, :id] => ids).to_a
       end
     end
 

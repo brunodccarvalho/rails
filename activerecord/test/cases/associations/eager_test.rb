@@ -1674,7 +1674,7 @@ class EagerAssociationTest < ActiveRecord::TestCase
 
     quoted_blog_id = Regexp.escape(quote_table_name("sharded_comments.blog_id"))
     quoted_blog_post_id = Regexp.escape(quote_table_name("sharded_comments.blog_post_id"))
-    assert_match(/WHERE #{quoted_blog_id} IN \(.+\) AND #{quoted_blog_post_id} IN \(.+\)/, sql)
+    assert_match(/WHERE \(#{quoted_blog_id}, #{quoted_blog_post_id}\) IN \(.+?\)/, sql)
   end
 
   test "preloading has_many association associated by a composite query_constraints" do

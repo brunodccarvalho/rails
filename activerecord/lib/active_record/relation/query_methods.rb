@@ -1632,7 +1632,7 @@ module ActiveRecord
         when Hash
           opts = opts.transform_keys do |key|
             if key.is_a?(Array)
-              key.map { |k| model.attribute_aliases[k.to_s] || k.to_s }
+              key.map { |k| k.is_a?(Hash) ? k : (model.attribute_aliases[k.to_s] || k.to_s) }
             else
               key = key.to_s
               model.attribute_aliases[key] || key

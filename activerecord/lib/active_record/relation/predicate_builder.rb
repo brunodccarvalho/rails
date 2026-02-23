@@ -93,7 +93,7 @@ module ActiveRecord
           if key.is_a?(Array)
             queries = Array(value).map do |ids_set|
               raise ArgumentError, "Expected corresponding value for #{key} to be an Array" unless ids_set.is_a?(Array)
-              expand_from_hash(key.zip(ids_set).to_h)
+              expand_from_hash(build_composite_key_attrs(key, ids_set), &block)
             end
             grouping_queries(queries)
           elsif value.is_a?(Hash) && !table.has_column?(key)
@@ -160,6 +160,23 @@ module ActiveRecord
           queries = Arel::Nodes::Or.new(queries)
           Arel::Nodes::Grouping.new(queries)
         end
+      end
+
+      def build_composite_key_attrs(key, ids_set)
+        attrs = {}
+        key.zip(ids_set).each do |k, v|
+          if k.is_a?(Hash)
+            k.each do |table_name, column_name|
+              (attrs[table_name.to_s] ||= {})[column_name.to_s] = v
+            end
+          elsif k.is_a?(String) && (idx = k.rindex("."))
+            table_name, column_name = k[0, idx], k[idx + 1, k.length]
+            (attrs[table_name] ||= {})[column_name] = v
+          else
+            attrs[k] = v
+          end
+        end
+        attrs
       end
 
       def convert_dot_notation_to_hash(attributes)

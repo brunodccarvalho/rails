@@ -149,6 +149,30 @@ module ActiveRecord
       end
     end
 
+    def test_where_with_tuple_syntax_with_joined_table_hash
+      post = Post.first
+      comment = Comment.create!(post: post, body: "tuple test")
+
+      result = Post.joins(:comments).where([:id, { comments: :body }] => [[post.id, "tuple test"]]).to_a
+      assert_includes result, post
+    end
+
+    def test_where_with_tuple_syntax_with_eager_loaded_table_hash
+      post = Post.first
+      comment = Comment.create!(post: post, body: "eager tuple test")
+
+      result = Post.eager_load(:comments).where([:id, { comments: :body }] => [[post.id, "eager tuple test"]]).to_a
+      assert_includes result, post
+    end
+
+    def test_where_with_tuple_syntax_with_dot_notation
+      post = Post.first
+      comment = Comment.create!(post: post, body: "dot notation test")
+
+      result = Post.joins(:comments).where([:id, :"comments.body"] => [[post.id, "dot notation test"]]).to_a
+      assert_includes result, post
+    end
+
     def test_where_with_nil_cpk_association
       order = Cpk::Order.create!(id: [1, 2])
       book = order.books.create!(id: [3, 4])

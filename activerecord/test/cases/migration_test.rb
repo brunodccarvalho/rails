@@ -1471,6 +1471,32 @@ if ActiveRecord::Base.lease_connection.supports_bulk_alter?
       assert_equal false, column(:age).null
     end
 
+    if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
+      def test_bulk_change_table_with_algorithm_and_lock_uses_single_alter_statement
+        sql = capture_sql do
+          with_bulk_change_table(algorithm: :inplace, lock: :none) do |t|
+            t.string :name
+            t.integer :age
+          end
+        end
+
+        assert_equal 1, sql.grep(/ALTER TABLE/).size
+        assert_match(/ALGORITHM = INPLACE, LOCK = NONE\z/, sql.last)
+      end
+
+      def test_bulk_change_table_with_algorithm_and_lock_rejects_non_combinable_operations
+        error = assert_raises(ActiveRecord::InvalidChangeTableError) do
+          with_bulk_change_table(algorithm: :inplace, lock: :none) do |t|
+            t.string :name
+            t.change_null :name, false
+          end
+        end
+
+        assert_match(/Command change_column_null is not supported in bulk change_table/, error.message)
+        assert_not column(:name)
+      end
+    end
+
     if supports_text_column_with_default?
       def test_default_functions_on_columns
         with_bulk_change_table do |t|
@@ -1541,11 +1567,11 @@ if ActiveRecord::Base.lease_connection.supports_bulk_alter?
     end
 
     private
-      def with_bulk_change_table(&block)
+      def with_bulk_change_table(**options, &block)
         # Reset columns/indexes cache as we're changing the table
         @columns = @indexes = nil
 
-        Person.lease_connection.change_table(:delete_me, bulk: true, &block)
+        Person.lease_connection.change_table(:delete_me, bulk: true, **options, &block)
       end
 
       def column(name)
@@ -1629,6 +1655,31 @@ if ActiveRecord::Base.lease_connection.supports_bulk_alter?
     ensure
       @connection.drop_table :prefix_testings, if_exists: true
       ActiveRecord::Base.table_name_prefix = ""
+    end
+
+    if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
+      def test_bulk_revert_with_mysql_algorithm_and_lock
+        migration = Class.new(ActiveRecord::Migration::Current) {
+          disable_ddl_transaction!
+
+          def write(text = ""); end
+
+          def change
+            change_table :people, bulk: true, algorithm: :inplace, lock: :none do |t|
+              t.column :column1, :string
+              t.column :column2, :string
+            end
+          end
+        }.new
+
+        migration.migrate(:up)
+        sql = capture_sql do
+          migration.migrate(:down)
+        end
+
+        assert_equal 1, sql.grep(/ALTER TABLE/).size
+        assert_equal 1, sql.grep(/ALGORITHM = INPLACE, LOCK = NONE/).size
+      end
     end
   end
 end

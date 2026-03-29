@@ -473,6 +473,15 @@ module ActiveRecord
       #
       #   Only supported on the MySQL and PostgreSQL adapter, ignored elsewhere.
       #
+      # [<tt>:algorithm</tt> and <tt>:lock</tt>]
+      #   Specifies the algorithm and lock modes for the bulk operation.
+      #
+      #     ALTER TABLE `users` ADD COLUMN age INT, ADD COLUMN birthdate DATETIME ..., ALGORITHM = INSTANT, LOCK = NONE
+      #
+      #   Requires bulk: true to be set.
+      #
+      #   Only supported on the MySQL adapter, ignored elsewhere.
+      #
       # ====== Add a column
       #
       #   change_table(:suppliers) do |t|
@@ -537,7 +546,7 @@ module ActiveRecord
         if supports_bulk_alter? && options[:bulk]
           recorder = ActiveRecord::Migration::CommandRecorder.new(self)
           yield update_table_definition(table_name, recorder)
-          bulk_change_table(table_name, recorder.commands)
+          bulk_change_table(table_name, recorder.commands, options.except(:bulk))
         else
           yield update_table_definition(table_name, base)
         end
@@ -1645,7 +1654,11 @@ module ActiveRecord
         SchemaCreation.new(self)
       end
 
-      def bulk_change_table(table_name, operations) # :nodoc:
+      def execute_bulk_alter_statements(table_name, sql_fragments, **) # :nodoc:
+        execute "ALTER TABLE #{quote_table_name(table_name)} #{sql_fragments.join(", ")}" unless sql_fragments.empty?
+      end
+
+      def bulk_change_table(table_name, operations, options) # :nodoc:
         sql_fragments = []
         non_combinable_operations = []
 
@@ -1658,7 +1671,7 @@ module ActiveRecord
             sql_fragments.concat(sqls)
             non_combinable_operations.concat(procs)
           else
-            execute "ALTER TABLE #{quote_table_name(table_name)} #{sql_fragments.join(", ")}" unless sql_fragments.empty?
+            execute_bulk_alter_statements(table_name, sql_fragments, **options)
             non_combinable_operations.each(&:call)
             sql_fragments = []
             non_combinable_operations = []
@@ -1666,7 +1679,7 @@ module ActiveRecord
           end
         end
 
-        execute "ALTER TABLE #{quote_table_name(table_name)} #{sql_fragments.join(", ")}" unless sql_fragments.empty?
+        execute_bulk_alter_statements(table_name, sql_fragments, **options)
         non_combinable_operations.each(&:call)
       end
 

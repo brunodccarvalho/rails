@@ -179,17 +179,51 @@ class ActiveSchemaTest < ActiveRecord::AbstractMysqlTestCase
 
     expected = "ALTER TABLE `people` ADD INDEX `index_people_on_last_name` USING btree (`last_name`(10)), ALGORITHM = COPY"
     assert_queries_match(expected) do
-      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true) do |t|
-        t.index :last_name, length: 10, using: :btree, algorithm: :copy
+      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true, algorithm: :copy) do |t|
+        t.index :last_name, length: 10, using: :btree
       end
     end
 
     expected = "ALTER TABLE `people` ADD INDEX `index_people_on_last_name` USING btree (`last_name`(10)), ALGORITHM = INPLACE, LOCK = NONE"
     assert_queries_match(expected) do
-      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true) do |t|
-        t.index :last_name, length: 10, using: :btree, algorithm: :inplace, lock: :none
+      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true, algorithm: :inplace, lock: :none) do |t|
+        t.index :last_name, length: 10, using: :btree
       end
     end
+  end
+
+  def test_bulk_change_with_online_ddl
+    expected = "ALTER TABLE `people` DROP COLUMN `last_name`, ADD `last_name` varchar(55) NOT NULL, LOCK = NONE"
+    assert_queries_match(expected) do
+      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true, lock: :none) do |t|
+        t.remove :last_name
+        t.string :last_name, limit: 55, null: false
+      end
+    end
+
+    expected = "ALTER TABLE `people` DROP COLUMN `last_name`, ADD `last_name` varchar(55) NOT NULL, ALGORITHM = INSTANT, LOCK = NONE"
+    assert_queries_match(expected) do
+      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true, algorithm: :instant, lock: :none) do |t|
+        t.remove :last_name
+        t.string :last_name, limit: 55, null: false
+      end
+    end
+
+    error = assert_raises(ActiveRecord::InvalidChangeTableError) do
+      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true) do |t|
+        t.remove :last_name
+        t.string :last_name, limit: 55, null: false, algorithm: :instant, lock: :none
+      end
+    end
+    assert_match(/Commands in a bulk change_table may not specify :algorithm/, error.message)
+
+    error = assert_raises(ActiveRecord::InvalidChangeTableError) do
+      ActiveRecord::Base.lease_connection.change_table(:people, bulk: true) do |t|
+        t.string :name
+        t.change_null :name, false
+      end
+    end
+    assert_match(/Command change_column_null is not supported in bulk change_table/, error.message)
   end
 
   def test_drop_table

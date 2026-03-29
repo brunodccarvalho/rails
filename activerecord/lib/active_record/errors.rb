@@ -137,6 +137,10 @@ module ActiveRecord
     # This subclasses ArgumentError for backwards compatibility.
   end
 
+  # Raised when +change_table+ options are inconsistent or incompatible with options passed to commands.
+  class InvalidChangeTableError < ArgumentError
+  end
+
   # Raised when Active Record cannot find a record by given id or set of ids.
   class RecordNotFound < ActiveRecordError
     attr_reader :model, :primary_key, :id

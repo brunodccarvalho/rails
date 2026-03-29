@@ -161,8 +161,38 @@ module ActiveRecord
           MySQL::SchemaCreation.new(self)
         end
 
+        def execute_bulk_alter_statements(table_name, sql_fragments, **options) # :nodoc:
+          return if sql_fragments.empty?
+
+          algorithm = index_algorithm(options.delete(:algorithm))
+          lock = lock_clause(options.delete(:lock))
+          sql = "ALTER TABLE #{quote_table_name(table_name)} #{sql_fragments.join(", ")}"
+          sql << ", #{algorithm}" if algorithm
+          sql << ", #{lock}" if lock
+          execute(sql)
+        end
+
+        def bulk_change_table(table_name, operations, options)
+          operations.each do |command, args|
+            if !respond_to?(:"#{command}_for_alter", true) && online_ddl_options?(options)
+              raise InvalidChangeTableError, "Command #{command} is not supported in bulk change_table, will not unroll into multiple statements as :algorithm or :lock options were given"
+            end
+
+            command_options = args.last if args.last.is_a?(Hash)
+            if command_options && online_ddl_options?(command_options)
+              raise InvalidChangeTableError, "Commands in a bulk change_table may not specify :algorithm or :lock, pass options to change_table instead"
+            end
+          end
+
+          super
+        end
+
         private
           CHARSETS_OF_4BYTES_MAXLEN = ["utf8mb4", "utf16", "utf16le", "utf32"]
+
+          def online_ddl_options?(options)
+            !options[:algorithm].nil? || !options[:lock].nil?
+          end
 
           def row_format_dynamic_by_default?
             if mariadb?

@@ -114,15 +114,19 @@ module ActionDispatch
         end
 
         def set_cookie(request, session_id, cookie)
-          cookie_jar(request)[@key] = cookie
+          cookie_jar(request)[cookie_key(request)] = cookie
         end
 
         def get_cookie(req)
-          cookie_jar(req)[@key]
+          cookie_jar(req)[cookie_key(req)]
         end
 
         def cookie_jar(request)
           request.cookie_jar.signed_or_encrypted
+        end
+
+        def cookie_key(request)
+          request.session_options[:key] || @key
         end
     end
   end
